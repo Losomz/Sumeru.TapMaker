@@ -1,4 +1,4 @@
-﻿﻿[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     # 框架仓库本地路径，默认与游戏项目同级的 Sumeru.TapMaker。
     [string]$Source = "",
