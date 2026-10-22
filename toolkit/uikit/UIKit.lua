@@ -19,6 +19,7 @@ local PanelInstance=require("sumeru.toolkit.uikit.PanelInstance")
 ---@field panels_ table<string,SumeruPanelDefinition>
 ---@field order_ SumeruPanelDefinition[]
 ---@field config_ SumeruUIKitConfig
+---@field registry_ SumeruPanelRegistry
 local Kit={}
 Kit.Layers={Scene=0,HUD=10,Badge=15,PhasePage=20,Guide=30,Page=40,Popup=50,Toast=60}
 -- 默认配置：始终使用 main 宿主、所有面板均允许、面板位于 ui/panels；Destroy 不清除配置。
