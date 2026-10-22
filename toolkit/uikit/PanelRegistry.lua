@@ -2,6 +2,7 @@
 ---@class SumeruPanelRegistry
 ---@field declarations table<string,SumeruPanelDefinition>
 ---@field resolved table<string,SumeruPanelDefinition>
+---@field root string
 local Registry = {}
 Registry.__index = Registry
 
@@ -10,10 +11,23 @@ local function copy(source, target)
     return target
 end
 
--- 创建空的声明与解析缓存，实例不共享可变数据。
+-- 创建空的声明与解析缓存，实例不共享可变数据；root 为面板约定根路径，默认 ui/panels。
 ---@return SumeruPanelRegistry
-function Registry.new()
-    return setmetatable({ declarations = {}, resolved = {} }, Registry)
+function Registry.new(root)
+    return setmetatable({ declarations = {}, resolved = {}, root = root or "ui/panels" }, Registry)
+end
+
+-- 设置面板约定根路径，之后登记的面板按此推导默认模板与控制器。
+function Registry:SetRoot(root)
+    self.root = root or "ui/panels"
+end
+
+-- 按约定返回面板模板路径与控制器模块名：<root>/<key>/<key>.ui.json 与 <root 点分>.<key>.<key>。
+---@return string template
+---@return string controller
+function Registry:Paths(key)
+    local module = self.root:gsub("/", ".")
+    return self.root .. "/" .. key .. "/" .. key .. ".ui.json", module .. "." .. key .. "." .. key
 end
 
 -- 登记 JSON 页面和独立 Controller，不接受原生场景旁路。
@@ -24,8 +38,9 @@ function Registry:Register(key, definition)
     local item = copy(definition, { key = key })
     item.owner = item.owner or "global"
     item.layer = item.layer or 40
-    item.template = item.template or ("game/ui/panels/" .. key .. "/" .. key .. ".ui.json")
-    item.controller = item.controller or ("game.ui.panels." .. key .. "." .. key)
+    local template, controller = self:Paths(key)
+    item.template = item.template or template
+    item.controller = item.controller or controller
     self.declarations[key] = item
     self.resolved[key] = nil
     return item

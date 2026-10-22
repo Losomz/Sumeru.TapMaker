@@ -1,24 +1,46 @@
 -- 单一 UI 根容器，独立 MainShell / GameShell / OverlayPanel 生命周期。
+-- 业务约定：Attach(app,metrics) 的 app 可带 dirty 标记（为真时下一帧刷新全部可见页面）；
+-- metrics(app) 返回 {w,h,vw,vh,safe={left,right},top,map,capsule,background}。
+-- 宿主判定、面板路径与 Shell 组件由 Configure 注入，框架不引用任何业务模块。
 local UI=require("urhox-libs/UI")
-local Host=require("game.ui.ScreenHost")
 local Registry=require("sumeru.toolkit.uikit.PanelRegistry")
+local Components=require("sumeru.toolkit.uikit.ComponentRegistry")
 local PanelInstance=require("sumeru.toolkit.uikit.PanelInstance")
+---@class SumeruUIKitConfig
+---@field host fun(app:table):string
+---@field allows fun(def:SumeruPanelDefinition,app:table):boolean
+---@field panelRoot string
+---@field componentRoot string?
+---@field shellComponents table<string,string[]>
+
 ---@class SumeruUIKit
 ---@field active_ SumeruPanelInstance[]
 ---@field arch SumeruArchitecture?
 ---@field panels_ table<string,SumeruPanelDefinition>
 ---@field order_ SumeruPanelDefinition[]
+---@field config_ SumeruUIKitConfig
 local Kit={}
 Kit.Layers={Scene=0,HUD=10,Badge=15,PhasePage=20,Guide=30,Page=40,Popup=50,Toast=60}
+-- 默认配置：始终使用 main 宿主、所有面板均允许、面板位于 ui/panels；Destroy 不清除配置。
+Kit.config_={host=function() return "main" end,allows=function() return true end,panelRoot="ui/panels",componentRoot=nil,shellComponents={}}
 -- 复制上下文，避免不同页面互相覆盖。
 local function copy(source,target) for k,v in pairs(source or {}) do target[k]=v end;return target end
 -- 初始化宿主状态；不影响业务模拟和存档。
 local function reset()
- Kit.registry_=Registry.new();Kit.panels_={};Kit.order_={};Kit.active_={};Kit.shells_={}
+ Kit.registry_=Registry.new(Kit.config_.panelRoot);Kit.panels_={};Kit.order_={};Kit.active_={};Kit.shells_={}
  Kit.pageKey_=false;Kit.overlayKey_=false;Kit.pageProps_={};Kit.openRevision_={}
  Kit.structureDirty_=true;Kit.dataDirty_=true;Kit.metricsKey_=nil;Kit.app_=nil
  Kit.noticeText_="";Kit.noticeTime_=0;Kit.noticeDuration_=0;Kit.noticeRevision_=0
  Kit.root_=nil;Kit.frame_=nil;Kit.host_=nil;Kit.phaseResolver_=nil;Kit.metrics_=nil
+end
+-- 注入业务配置：host(app) 返回宿主 Shell 名，allows(def,app) 判断面板是否允许出现，
+-- panelRoot 为面板约定根路径，componentRoot 为未登记组件的查找根路径，shellComponents 为各 Shell 预加载组件。
+-- 需在 RegisterPanel 之前调用，未传字段保持原值。
+function Kit:Configure(opts)
+ copy(opts,self.config_)
+ self.registry_:SetRoot(self.config_.panelRoot)
+ Components:SetRoot(self.config_.componentRoot)
+ self:MarkStructureDirty()
 end
 -- 挂接 App 和自适应测量函数。
 function Kit:Attach(app,metrics) self.app_=app;self.metrics_=metrics;self:MarkStructureDirty() end
@@ -55,7 +77,7 @@ function Kit:SetPhaseResolver(fn) self.phaseResolver_=fn;self:MarkStructureDirty
 -- 打开独立页面；keepMounted 页面只切换可见状态，不销毁旧 JSON 树。
 function Kit:OpenPage(key,props)
  local def=self.panels_[key]
- if not def or def.layer~=self.Layers.Page or not Host.Allows(def,self.app_) then return false end
+ if not def or def.layer~=self.Layers.Page or not self.config_.allows(def,self.app_) then return false end
  if def.shell=="overlay" then self.overlayKey_=key else self.pageKey_=key end
  self.pageProps_[key]=props or self.pageProps_[key] or {}
  self.openRevision_[key]=(self.openRevision_[key] or 0)+1
@@ -95,17 +117,17 @@ function Kit:RefreshVisiblePages() self:refresh_() end
 -- 丢弃不属于当前阶段的显式页面，缓存页面会在宿主切换时统一卸载。
 function Kit:SyncPhasePage(app)
  self.app_=app or self.app_
- if self.pageKey_ and (not self.panels_[self.pageKey_] or not Host.Allows(self.panels_[self.pageKey_],self.app_)) then
+ if self.pageKey_ and (not self.panels_[self.pageKey_] or not self.config_.allows(self.panels_[self.pageKey_],self.app_)) then
   self.pageKey_=false
  end
- if self.overlayKey_ and (not self.panels_[self.overlayKey_] or not Host.Allows(self.panels_[self.overlayKey_],self.app_)) then
+ if self.overlayKey_ and (not self.panels_[self.overlayKey_] or not self.config_.allows(self.panels_[self.overlayKey_],self.app_)) then
   self.overlayKey_=false
  end
  self:MarkStructureDirty()
 end
 -- 判断面板可见性，隐藏缓存页不参与命中测试。
 function Kit:panelVisible_(def,app)
- if not Host.Allows(def,app) then return false end
+ if not self.config_.allows(def,app) then return false end
  if def.layer==self.Layers.Page then return (def.shell=="overlay" and self.overlayKey_ or self.pageKey_)==def.key end
  if def.layer==self.Layers.PhasePage then return not self.pageKey_ and self.phaseResolver_ and self.phaseResolver_(app)==def.key end
  return not def.visible or def.visible(app,self)==true
@@ -118,7 +140,7 @@ function Kit:desiredKeys_(app)
  for _,entry in ipairs(self.active_) do cached[entry.key]=entry end
  for _,def in ipairs(self.order_) do
   local entry=cached[def.key];local scope=def.scope and def.scope(app) or nil
-  local keep=def.keepMounted and entry and entry.scope==scope and Host.Allows(def,app)
+  local keep=def.keepMounted and entry and entry.scope==scope and self.config_.allows(def,app)
   if keep or self:panelVisible_(def,app) then keys[#keys+1]=def.key end
  end
  return keys
@@ -155,10 +177,11 @@ function Kit:ensureRoot_(metrics)
  self.frame_=UI.Panel{position="absolute",left=0,top=0,width=metrics.w,height=metrics.h,overflow="hidden",pointerEvents="box-none"}
  self.root_:AddChild(self.frame_);UI.SetRoot(self.root_,true)
 end
--- 只建立当前业务 Shell 和独立 OverlayPanel。
+-- 只建立当前业务 Shell 和独立 OverlayPanel；路径按面板根路径约定推导，预加载组件取自配置。
 function Kit:mountShell_(name,metrics)
  local key=name=="overlay" and "overlay" or name
- local descriptor={template="game/ui/panels/"..key.."/"..key..".ui.json",controller="game.ui.panels."..key.."."..key,layer=name=="overlay" and 100 or 0,isShell=true,components=name=="game" and {"FrameworkButton","LightButton","BottomNavButton"} or {}}
+ local template,controller=self.registry_:Paths(key)
+ local descriptor={template=template,controller=controller,layer=name=="overlay" and 100 or 0,isShell=true,components=self.config_.shellComponents[name] or {}}
  local entry=self:mount_(key,descriptor,self:context_(key,metrics,self.frame_))
  self.shells_[name]=entry
 end
@@ -170,7 +193,7 @@ function Kit:parentFor_(def)
 end
 -- 调度独立实例的显隐；作用域变化释放旧对局的页面实例。
 function Kit:reconcile_(metrics,keys,resized)
- local host=Host.Host(self.app_)
+ local host=self.config_.host(self.app_)
  local desired={};for _,key in ipairs(keys) do desired[key]=true end
  for i=#self.active_,1,-1 do
   local entry=self.active_[i];local scope=entry.def.scope and entry.def.scope(self.app_) or nil
@@ -228,7 +251,7 @@ function Kit:Flush(app)
  for _,entry in ipairs(self.active_) do
   if entry.def.scope and entry.scope~=entry.def.scope(self.app_) then self.structureDirty_=true;break end
  end
- if resized or self.structureDirty_ or self.key_~=key or self.host_~=Host.Host(self.app_) then
+ if resized or self.structureDirty_ or self.key_~=key or self.host_~=self.config_.host(self.app_) then
   self:reconcile_(m,keys,resized);self.key_=key
  end
  if self.dataDirty_ or self.app_.dirty then self:refresh_();self.dataDirty_=false;self.app_.dirty=false end

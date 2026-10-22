@@ -2,6 +2,41 @@
 
 入口为 `require("sumeru.toolkit.uikit.UIKit")`，负责 JSON 面板、宿主和组件生命周期。以下经验属于 UrhoX UI / NanoVG 绘制层，可随框架迁移到其他项目；不是对引擎参考库的修改。
 
+## 接入配置
+
+框架不引用任何业务模块。项目在注册面板前调用一次 `Configure`，把宿主判定、路径约定和项目控件注入进来：
+
+```lua
+local UIKit=require("sumeru.toolkit.uikit.UIKit")
+local Components=require("sumeru.toolkit.uikit.ComponentRegistry")
+
+UIKit:Configure({
+ host=function(app) return app.inGame and "game" or "main" end, -- 当前业务宿主 Shell 名
+ allows=function(def,app) return true end,                      -- 面板在当前阶段是否允许出现
+ panelRoot="ui/panels",          -- 面板与 Shell：<root>/<key>/<key>.ui.json，控制器 ui.panels.<key>.<key>
+ componentRoot="ui/components",  -- 未登记组件按 <root>/<slug>/<slug>.ui.json 查找
+ shellComponents={game={"FrameworkButton","MyButton"}},           -- 各 Shell 预加载的组件
+})
+-- 项目自己的控件：Lua Widget 用 RegisterWidget，JSON 组件用 RegisterTemplate（均为首次使用时才加载）。
+Components:RegisterWidget("MyButton",function() return require("ui.MyButton") end)
+Components:RegisterTemplate("Card","ui/components/card/card.ui.json","ui.components.card.card")
+
+UIKit:RegisterPanel("home",{shell="main",layer=UIKit.Layers.PhasePage})
+UIKit:Attach(app,metrics)
+```
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `host(app)` | 始终 `"main"` | 返回当前宿主 Shell 名，变化时卸载旧 Shell 与其页面 |
+| `allows(def,app)` | 始终允许 | 面板在当前阶段是否允许打开、显示和保留缓存 |
+| `panelRoot` | `ui/panels` | 未显式写 `template`/`controller` 的面板和 Shell 按此推导路径 |
+| `componentRoot` | 不设 | 不设时未登记组件直接报错 |
+| `shellComponents` | `{}` | 按 Shell 名列出预加载组件 |
+
+- 框架内置控件只有 `FrameworkButton`、`FrameworkToggle`、`FrameworkScrollView`。
+- `Configure` 必须在 `RegisterPanel` 之前调用；配置在 `Destroy` 后保留。
+- App 约定：`app.dirty` 为真时下一帧刷新全部可见页面；`metrics(app)` 返回 `w,h,vw,vh,safe{left,right},top,map,capsule,background`。
+
 ## 九宫格内部出现细线
 
 ### 现象和原因

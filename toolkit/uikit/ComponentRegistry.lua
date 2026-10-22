@@ -6,7 +6,12 @@ local Registry = {}
 Registry.__index = Registry
 
 function Registry.new()
-    return setmetatable({ declarations = {}, resolved = {} }, Registry)
+    return setmetatable({ declarations = {}, resolved = {}, root = nil }, Registry)
+end
+
+-- 设置未登记组件的约定查找根路径（如 ui/components）；不设置时未登记组件直接报错。
+function Registry:SetRoot(root)
+    self.root = root
 end
 
 function Registry:RegisterWidget(typeName, factory)
@@ -28,12 +33,13 @@ function Registry:Resolve(typeName)
     if cached then return cached end
     local declaration = self.declarations[typeName]
     if not declaration then
+        if not self.root then error("ComponentRegistry: unknown component '" .. tostring(typeName) .. "' (no component root configured)") end
         local slug = typeName:gsub("(%u)", "-%1"):sub(2):lower()
-        local resource = "game/ui/components/" .. slug .. "/" .. slug .. ".ui.json"
+        local resource = self.root .. "/" .. slug .. "/" .. slug .. ".ui.json"
         local file = cache and cache:GetFile(resource)
         if not file then error("ComponentRegistry: unknown component '" .. tostring(typeName) .. "' (tried " .. resource .. ")") end
         file:Close()
-        self:RegisterTemplate(typeName, resource, "game.ui.components." .. slug .. "." .. slug)
+        self:RegisterTemplate(typeName, resource, self.root:gsub("/", ".") .. "." .. slug .. "." .. slug)
         declaration = self.declarations[typeName]
     end
     if declaration.kind == "widget" then
@@ -82,17 +88,10 @@ function Registry:Instantiate(typeName, props, context)
     return instance
 end
 local defaultRegistry = Registry.new()
+-- 框架自带控件；项目自己的控件由业务层通过 RegisterWidget / RegisterTemplate 注册。
 defaultRegistry:RegisterWidget("FrameworkButton", function() return require("sumeru.toolkit.uikit.components.Controls").Button end)
--- 轻量化面板与导航专用按压效果，不影响设置和结算控件。
-defaultRegistry:RegisterWidget("LightButton", function() return require("game.ui.LightButton") end)
--- 收起与关闭共用固定触区和框架悬浮动效，各自使用独立图形。
-defaultRegistry:RegisterWidget("CollapseButton", function() return require("game.ui.PanelIconButton").Collapse end)
-defaultRegistry:RegisterWidget("CloseButton", function() return require("game.ui.PanelIconButton").Close end)
 defaultRegistry:RegisterWidget("FrameworkToggle", function() return require("sumeru.toolkit.uikit.components.Controls").Toggle end)
 -- 按需注册支持鼠标与触摸拖动的滚动容器。
 defaultRegistry:RegisterWidget("FrameworkScrollView", function() return require("sumeru.toolkit.uikit.components.DragScrollView") end)
-defaultRegistry:RegisterWidget("MineArt", function() return require("game.ui.MineArt") end)
-defaultRegistry:RegisterTemplate("EntryButton", "game/ui/components/entry-button/entry-button.ui.json", "game.ui.components.entry-button.entry-button")
-defaultRegistry:RegisterTemplate("BottomNavButton", "game/ui/components/bottom-nav-button/bottom-nav-button.ui.json", "game.ui.components.bottom-nav-button.bottom-nav-button")
 
 return defaultRegistry

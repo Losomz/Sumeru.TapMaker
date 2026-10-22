@@ -22,5 +22,4 @@
 - Agent 免询问执行：`powershell -ExecutionPolicy Bypass -File .\scripts\sumeru\sync.ps1 -Update`（或 `-NoUpdate`）。
 - 框架改动在本仓库提交、推送后，再到各项目双击同步，不要只改项目副本。
 - `.meta` 含项目与作者信息，不入本仓库；同步后由各项目用 Maker MCP `generate_resource_meta` 为新文件生成。
-- 业务代码通过 `require("sumeru.toolkit.<kit>")` 引用。
-- 已知耦合：`toolkit/uikit` 仍引用 `game.ui.ScreenHost` 与若干 `game.ui.*` 控件，新项目需提供同名模块或先解耦。
+- 业务代码通过 `require("sumeru.toolkit.<kit>")` 引用；框架代码不引用任何业务模块，UIKit 的宿主与项目控件通过 `UIKit:Configure` 注入（见 [UIKit 接入配置](toolkit/uikit/README.md#接入配置)）。
