@@ -65,13 +65,16 @@ Get-ChildItem -LiteralPath $target -Recurse -Directory |
     Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force) } |
     Remove-Item -Force
 
-# 项目里的启动脚本与框架模板不一致时替换，下次启动生效。
-$launcherTemplate = Join-Path $Source "launcher.ps1"
-$launcher = Join-Path $Project "dev\sync-sumeru.ps1"
-if (-not (Test-Path -LiteralPath $launcher) -or -not (Test-SameContent $launcherTemplate $launcher)) {
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $launcher) | Out-Null
-    Copy-Item -LiteralPath $launcherTemplate -Destination $launcher -Force
-    Write-Host "启动脚本 dev/sync-sumeru.ps1 已更新为框架版本，下次运行生效"
+# 项目里的启动脚本（.ps1 与可双击的 .cmd）与框架模板不一致时替换，下次启动生效。
+foreach ($ext in @("ps1", "cmd")) {
+    $launcherTemplate = Join-Path $Source "launcher.$ext"
+    $launcher = Join-Path $Project "dev\sync-sumeru.$ext"
+    if (-not (Test-Path -LiteralPath $launcherTemplate)) { continue }
+    if (-not (Test-Path -LiteralPath $launcher) -or -not (Test-SameContent $launcherTemplate $launcher)) {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $launcher) | Out-Null
+        Copy-Item -LiteralPath $launcherTemplate -Destination $launcher -Force
+        Write-Host "启动脚本 dev/sync-sumeru.$ext 已更新为框架版本，下次运行生效"
+    }
 }
 
 $commit = (git -C $Source log -1 --format="%h %s").Trim()
