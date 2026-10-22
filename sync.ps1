@@ -1,21 +1,52 @@
-﻿[CmdletBinding()]
+﻿﻿[CmdletBinding()]
 param(
-    # 目标游戏项目根目录；框架同步到其 scripts/sumeru/。
-    [Parameter(Mandatory = $true)][string]$Project
+    # 框架仓库本地路径，默认与游戏项目同级的 Sumeru.TapMaker。
+    [string]$Source = "",
+    # 直接更新框架到最新，不询问。
+    [switch]$Update,
+    # 直接用本地框架同步，不更新、不询问。
+    [switch]$NoUpdate
 )
 
+# Sumeru 框架同步器：随框架放在游戏项目 scripts/sumeru/ 下，双击同目录的「同步框架.cmd」运行，同步时连同自身一起更新。
 $ErrorActionPreference = "Stop"
 
-$Source = $PSScriptRoot
-$target = Join-Path $Project "scripts\sumeru"
+$repoUrl = "https://github.com/Losomz/Sumeru.TapMaker.git"
+$target = $PSScriptRoot
 
-# 返回需要同步的框架文件相对路径：只含 framework/、toolkit/ 与根 README.md，不含 .meta。
+if (Test-Path -LiteralPath (Join-Path $target ".git")) {
+    Write-Host "这里是框架仓库本身，请到游戏项目的 scripts/sumeru/ 里运行同步。"
+    return
+}
+if ((Split-Path -Leaf $target) -ne "sumeru" -or (Split-Path -Leaf (Split-Path -Parent $target)) -ne "scripts") {
+    throw "同步器必须位于游戏项目的 scripts/sumeru/ 目录：$target"
+}
+$projectRoot = Split-Path -Parent (Split-Path -Parent $target)
+if (-not $Source) { $Source = Join-Path (Split-Path -Parent $projectRoot) "Sumeru.TapMaker" }
+
+# 框架仓库不存在时克隆；存在时按参数或询问决定是否快进拉取，避免覆盖本地未推送的框架改动。
+if (-not (Test-Path -LiteralPath (Join-Path $Source ".git"))) {
+    Write-Host "克隆框架仓库到 $Source"
+    git clone $repoUrl $Source
+    if ($LASTEXITCODE -ne 0) { throw "克隆框架仓库失败" }
+} else {
+    $pull = $Update
+    if (-not $Update -and -not $NoUpdate) {
+        $answer = Read-Host "是否先更新框架到最新？[Y/n]"
+        $pull = $answer -notmatch '^[nN]'
+    }
+    if ($pull) {
+        git -C $Source pull --ff-only
+        if ($LASTEXITCODE -ne 0) { throw "更新框架仓库失败" }
+    }
+}
+
+# 返回目录下需要同步的文件相对路径，不含 .git、.gitignore、.gitattributes 和 .meta。
 function Get-SyncFiles([string]$root) {
     $prefix = (Resolve-Path -LiteralPath $root).Path.TrimEnd('\') + '\'
     Get-ChildItem -LiteralPath $root -Recurse -File |
-        Where-Object { $_.Extension -ne '.meta' } |
-        ForEach-Object { $_.FullName.Substring($prefix.Length) } |
-        Where-Object { $_ -match '^(framework|toolkit)\\' -or $_ -eq 'README.md' }
+        Where-Object { $_.FullName -notmatch '\\\.git\\' -and $_.Name -notin @('.gitignore', '.gitattributes') -and $_.Extension -ne '.meta' } |
+        ForEach-Object { $_.FullName.Substring($prefix.Length) }
 }
 
 # 按字节比较两个文件内容是否一致（Windows PowerShell 5 不保证有 Get-FileHash）。
@@ -25,7 +56,6 @@ function Test-SameContent([string]$a, [string]$b) {
     return [System.Linq.Enumerable]::SequenceEqual($x, $y)
 }
 
-New-Item -ItemType Directory -Force -Path $target | Out-Null
 $sourceFiles = @(Get-SyncFiles $Source)
 $sourceSet = @{}
 foreach ($rel in $sourceFiles) { $sourceSet[$rel.ToLowerInvariant()] = $true }
@@ -65,26 +95,14 @@ Get-ChildItem -LiteralPath $target -Recurse -Directory |
     Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force) } |
     Remove-Item -Force
 
-# 项目里的启动脚本（.ps1 与可双击的 .cmd）与框架模板不一致时替换，下次启动生效。
-foreach ($ext in @("ps1", "cmd")) {
-    $launcherTemplate = Join-Path $Source "launcher.$ext"
-    $launcher = Join-Path $Project "dev\sync-sumeru.$ext"
-    if (-not (Test-Path -LiteralPath $launcherTemplate)) { continue }
-    if (-not (Test-Path -LiteralPath $launcher) -or -not (Test-SameContent $launcherTemplate $launcher)) {
-        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $launcher) | Out-Null
-        Copy-Item -LiteralPath $launcherTemplate -Destination $launcher -Force
-        Write-Host "启动脚本 dev/sync-sumeru.$ext 已更新为框架版本，下次运行生效"
-    }
-}
-
 $commit = (git -C $Source log -1 --format="%h %s").Trim()
 Write-Host "框架版本：$commit"
 Write-Host ("新增 {0}，更新 {1}，删除 {2}" -f $added.Count, $updated.Count, $removed.Count)
 $added + $updated + $removed | ForEach-Object { Write-Host "  $_" }
 
-# 列出缺少 .meta 的脚本和资源（README 等文档不需要），交由 Maker MCP generate_resource_meta 生成。
+# 列出缺少 .meta 的脚本和资源（文档与同步器不需要），交由 Maker MCP generate_resource_meta 生成。
 $missing = @(Get-SyncFiles $target | Where-Object {
-    $_ -notmatch '\.md$' -and -not (Test-Path -LiteralPath ((Join-Path $target $_) + ".meta"))
+    $_ -notmatch '\.(md|ps1|cmd)$' -and -not (Test-Path -LiteralPath ((Join-Path $target $_) + ".meta"))
 })
 if ($missing.Count -gt 0) {
     Write-Host "以下文件缺少 .meta，请用 Maker MCP generate_resource_meta 生成："

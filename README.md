@@ -16,10 +16,11 @@
 
 本仓库是框架源码的唯一来源，各 TapTap Maker 游戏项目保存一份同步副本于 `scripts/sumeru/`（普通文件，不用 git submodule，构建不受影响）。
 
-- 同步逻辑在本仓库根目录 `sync.ps1`，随框架一起更新；游戏项目只放启动脚本 `dev/sync-sumeru.ps1` 与可双击的 `dev/sync-sumeru.cmd`（模板为根目录 `launcher.ps1`、`launcher.cmd`，同步时自动保持最新）。
-- 新项目接入：把 `launcher.ps1`、`launcher.cmd` 复制为项目的 `dev/sync-sumeru.ps1`、`dev/sync-sumeru.cmd`，双击 `.cmd` 运行一次即可（框架仓库默认放在与项目同级的 `Sumeru.TapMaker`，不存在时自动克隆）。
-- 日常同步：双击 `dev/sync-sumeru.cmd`，询问是否先更新框架，跑完停住看结果。命令行或 Agent 用 `powershell -ExecutionPolicy Bypass -File .\dev\sync-sumeru.ps1 -Update`（或 `-NoUpdate`）免询问执行。
-- 框架改动在本仓库提交、推送后，再到各项目运行启动脚本同步，不要只改项目副本。
+- 同步器随框架放在 `scripts/sumeru/` 里：双击 `同步框架.cmd`，询问是否先更新框架，然后把框架同步到当前项目，跑完停住看结果。同步器本身也是框架文件，每次同步自动更新。
+- 框架仓库默认放在与游戏项目同级的 `Sumeru.TapMaker`，不存在时自动克隆。
+- 新项目接入：把本仓库内容（除 `.git`）复制到项目的 `scripts/sumeru/`，双击一次 `同步框架.cmd`。
+- Agent 免询问执行：`powershell -ExecutionPolicy Bypass -File .\scripts\sumeru\sync.ps1 -Update`（或 `-NoUpdate`）。
+- 框架改动在本仓库提交、推送后，再到各项目双击同步，不要只改项目副本。
 - `.meta` 含项目与作者信息，不入本仓库；同步后由各项目用 Maker MCP `generate_resource_meta` 为新文件生成。
 - 业务代码通过 `require("sumeru.toolkit.<kit>")` 引用。
 - 已知耦合：`toolkit/uikit` 仍引用 `game.ui.ScreenHost` 与若干 `game.ui.*` 控件，新项目需提供同名模块或先解耦。
