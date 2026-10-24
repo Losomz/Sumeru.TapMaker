@@ -11,6 +11,7 @@
 - [AudioKit](toolkit/audiokit/README.md)
 - [SaveKit：按结构声明合并的存档读写](toolkit/savekit/README.md)
 - [LoadKit：资源分包按需下载与后台预取](toolkit/loadkit/README.md)
+- [AdKit：激励视频与广告位配置](toolkit/adkit/README.md)
 
 ## 接入游戏项目
 

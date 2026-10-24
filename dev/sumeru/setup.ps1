@@ -45,6 +45,29 @@ if (Test-Path -LiteralPath $settings) {
     Write-Host "还没有 .project/settings.json，首次 Maker 构建后再同步一次以补上构建忽略规则。"
 }
 
+# 广告配置检查：业务脚本用到激励视频，但本地 settings.json 没有 @runtime.ad 时，正式包没有广告位必然播放失败。
+# get_ad_config 只写 Maker 远端工作区，这里只能提示，不能代为获取。
+$scriptsDir = Join-Path $ProjectRoot "scripts"
+if (Test-Path -LiteralPath $scriptsDir) {
+    $frameworkDir = Join-Path $scriptsDir "sumeru"
+    $usesAd = Get-ChildItem -LiteralPath $scriptsDir -Recurse -File -Filter *.lua |
+        Where-Object { -not $_.FullName.StartsWith($frameworkDir, [System.StringComparison]::OrdinalIgnoreCase) } |
+        Select-String -Pattern 'ShowRewardVideoAd|sumeru\.toolkit\.adkit' -List | Select-Object -First 1
+    if ($usesAd) {
+        $hasAd = $false
+        if (Test-Path -LiteralPath $settings) {
+            $runtime = ([System.IO.File]::ReadAllText($settings) | ConvertFrom-Json).'@runtime'
+            $hasAd = $null -ne $runtime -and $null -ne $runtime.ad
+        }
+        if (-not $hasAd) {
+            Write-Host ""
+            Write-Host "[警告] 项目使用了激励视频广告，但 .project/settings.json 缺少 @runtime.ad：" -ForegroundColor Yellow
+            Write-Host "  Maker 预览正常，正式版会提示广告播放失败。用 Maker MCP get_ad_config 获取配置，" -ForegroundColor Yellow
+            Write-Host "  把返回的 ad 块写进本地 settings.json 的 @runtime 并提交。详见 scripts/sumeru/toolkit/adkit/README.md" -ForegroundColor Yellow
+        }
+    }
+}
+
 # 追加缺少的行到文本文件，文件不存在则创建。
 function Add-Lines([string]$path, [string[]]$lines) {
     $existing = @()
