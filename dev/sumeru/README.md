@@ -8,6 +8,7 @@
 | 关闭游戏窗口 | `关闭游戏.cmd` | `.\关闭游戏.cmd` | `powershell -File dev/sumeru/stop.ps1` |
 | 清除本游戏存档 | `清除存档.cmd` | `.\清除存档.cmd` | — |
 | 截图 + 运行时报错检查 | — | — | `bash dev/sumeru/shot.sh <场景> [帧数] [宽] [高]` |
+| 检查发布物料（出包前 / 出包后） | — | `.devsumerupublish-check.ps1` / `-Remote` | — |
 | 同步框架与工具 | `同步框架.cmd` | `.\dev\sumeru\sync.ps1 -Update` 或 `-NoUpdate` | — |
 
 ## 约定
@@ -16,4 +17,5 @@
 - 清存档：先关预览（避免退出时把存档写回），再删 `文档\temp\savedata` 下 `savePrefix` 开头的文件。
 - 截图：运行 `scripts/dev/shot-<场景>.lua`（项目自己写，一般是设置场景后 `require("main")`），产出 `.tmp/shots/<场景>.png/.json/.log`，并打印过滤噪音后的脚本错误。
 - Git Bash 不要用 `cmd //c 中文.cmd`（文件名会乱码），用上面的 `.sh` 入口。
+- 发布物料：Maker 出包上传的是 `project.json` 里 `assets` 本地路径指向的文件，不是网页上显示的 `*_url`。图片统一放 `docs/publish-materials/`，规则与出包流程见 [publish/README.md](publish/README.md)。
 - 运行时是 GUI 程序，启动不会多出控制台；双击 `.cmd` 的黑窗口成功即关，出错才停住。

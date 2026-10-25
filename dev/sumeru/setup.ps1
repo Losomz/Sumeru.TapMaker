@@ -1,4 +1,4 @@
-﻿# 项目初始化：补齐 dev/launch.json、构建忽略规则、换行规则与 .gitignore。只补缺，不覆盖已有内容，可重复运行。
+﻿# 项目初始化：补齐 dev/launch.json、构建忽略规则、换行规则、.gitignore 与 docs 下的发布模板。只补缺，不覆盖已有内容，可重复运行。
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "common.ps1")
 
@@ -65,6 +65,31 @@ if (Test-Path -LiteralPath $scriptsDir) {
             Write-Host "  Maker 预览正常，正式版会提示广告播放失败。用 Maker MCP get_ad_config 获取配置，" -ForegroundColor Yellow
             Write-Host "  把返回的 ad 块写进本地 settings.json 的 @runtime 并提交。详见 scripts/sumeru/toolkit/adkit/README.md" -ForegroundColor Yellow
         }
+    }
+}
+
+# 发布物料与更新日志模板：项目里没有对应目录时复制一份，已有则不动。规则见 dev/sumeru/publish/README.md。
+$templates = Join-Path $PSScriptRoot "publish\templates"
+foreach ($dir in @(Get-ChildItem -LiteralPath $templates -Directory -ErrorAction SilentlyContinue)) {
+    $target = Join-Path $ProjectRoot ("docs\" + $dir.Name)
+    if (-not (Test-Path -LiteralPath $target)) {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+        Copy-Item -LiteralPath $dir.FullName -Destination $target -Recurse
+        Write-Host "已生成 docs/$($dir.Name)/，用法见 dev/sumeru/publish/README.md"
+    }
+}
+
+# 发布物料检查：本地路径还指向 Maker 生成的 game_material 文件时，出包会把旧图传到 TapTap，覆盖后台的修改。
+$projectJson = Join-Path $ProjectRoot ".project\project.json"
+if (Test-Path -LiteralPath $projectJson) {
+    $assets = ([System.IO.File]::ReadAllText($projectJson) | ConvertFrom-Json).assets
+    $stale = @("icon", "promotional_image", "square_promotional_image", "cover_horizontal", "cover_vertical") |
+        Where-Object { $assets -and "$($assets.$_)" -like "*game_material/*" }
+    if ($stale) {
+        Write-Host ""
+        Write-Host ("[提示] 发布物料仍指向 Maker 生成的 game_material 文件：" + ($stale -join ", ")) -ForegroundColor Yellow
+        Write-Host "  从 Maker 出包会把这些图传到 TapTap，覆盖后台的修改。改用 docs/publish-materials/，" -ForegroundColor Yellow
+        Write-Host "  并运行 dev/sumeru/publish-check.ps1 检查。详见 dev/sumeru/publish/README.md" -ForegroundColor Yellow
     }
 }
 

@@ -5,7 +5,8 @@ TapTap Maker 游戏的起手模板：sumeru 框架 + 本地一键工具。仓库
 ```
 启动游戏.cmd / 关闭游戏.cmd / 清除存档.cmd / 同步框架.cmd   根目录一键脚本
 scripts/sumeru/                            框架（UIKit、SaveKit、LoadKit、FSM、Animation……），见 scripts/sumeru/README.md
-dev/sumeru/                                本地工具（启动、关闭、清存档、截图自检、同步、初始化），见 dev/sumeru/README.md
+dev/sumeru/                                本地工具（启动、关闭、清存档、截图自检、同步、初始化、发布物料检查），见 dev/sumeru/README.md
+dev/sumeru/publish/                        发布经验与模板：Maker 与 TapTap 物料保持一致，见 dev/sumeru/publish/README.md
 ```
 
 ## 新项目接入
@@ -16,9 +17,11 @@ dev/sumeru/                                本地工具（启动、关闭、清�
 3. 同步会自动运行 `dev/sumeru/setup.ps1`，补齐：
    - `dev/launch.json`：窗口尺寸、横竖屏、存档前缀；
    - `.project/settings.json` 的构建忽略；
-   - `.gitattributes` 换行规则、`.gitignore` 的 `.tmp/`。
+   - `.gitattributes` 换行规则、`.gitignore` 的 `.tmp/`；
+   - `docs/publish-materials/`（发布物料）与 `docs/更新日志/`（论坛公告）模板。
 4. 按同步结果的提示，用 Maker MCP `generate_resource_meta` 给 `scripts/sumeru/` 下缺 `.meta` 的文件生成 `.meta`。
 5. 写好 `scripts/main.lua` 后，双击 `启动游戏.cmd`。
+6. 上架前读 `dev/sumeru/publish/README.md`：图片放进 `docs/publish-materials/`，出包前后各跑一次 `publish-check.ps1`。
 
 ## 维护
 - 框架和工具只在本仓库改，提交推送后到各项目双击 `同步框架.cmd`；不要只改项目里的副本。
