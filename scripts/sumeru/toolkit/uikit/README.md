@@ -37,6 +37,26 @@ UIKit:Attach(app,metrics)
 - `Configure` 必须在 `RegisterPanel` 之前调用；配置在 `Destroy` 后保留。
 - App 约定：`app.dirty` 为真时下一帧刷新全部可见页面；`metrics(app)` 返回 `w,h,vw,vh,safe{left,right},top,map,capsule,background`。
 
+## 文字自适应底板
+
+提示条、Toast 这类“底板 + 一段文字”的控件，用固定宽高时文字一长就被裁掉。`TextFit` 按实际文字算底板尺寸，字号不变：
+
+```lua
+local TextFit=require("sumeru.toolkit.uikit.TextFit")
+local cache={}
+local w,h=TextFit.Apply(bubble,label,text,{
+ fontSize=15,fontFamily="my-font",lineHeight=1.2,  -- 与 Label 的字体参数保持一致
+ maxWidth=300,minWidth=140,minHeight=46,padX=12,padY=6,
+},cache)
+bubble:SetStyle({left=(screenW-w)/2})  -- 用返回的宽高定位
+```
+
+- 单行放得下（文字宽 + 左右内边距 ≤ `maxWidth`）时底板收窄到文字宽度；放不下时按 `maxWidth` 换行，底板随行数增高。
+- 结果不小于 `minWidth`/`minHeight`；文字 Label 绝对定位在底板内，必须设 `whiteSpace="normal"` 才能折行。
+- 测量与 Label 渲染共用 `UI.MeasureTextFit`。同一个 `cache` 下文字不变时只命中缓存，可以每帧调用；字体晚于首帧加载完成时会自动重测。
+- 只要尺寸不改控件时用 `TextFit.Measure(text,opt,cache)`，返回 `width,height,textWidth,textHeight,wrapped`。
+- 底板带 `scale` 变换时，传入未缩放的设计尺寸，返回值再乘缩放系数用于定位。
+
 ## 九宫格内部出现细线
 
 ### 现象和原因
