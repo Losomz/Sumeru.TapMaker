@@ -86,6 +86,20 @@ function Test-AssetUrl([string]$name, [string]$url, [string]$local) {
     }
 }
 
+# 调用 taptap-cli 并解析 JSON 输出：参数 JSON 写进项目内临时文件用 @file 传入（命令行传 JSON 会被 PowerShell 吃掉引号），stderr 不当作致命错误。
+function Invoke-TapCli([string[]]$arguments, [string]$data) {
+    $dataFile = Join-Path $tmp "data.json"
+    [System.IO.File]::WriteAllText($dataFile, $data, (New-Object System.Text.UTF8Encoding($false)))
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    Push-Location $ProjectRoot
+    try { $raw = (& taptap-cli @arguments --data "@.tmp/publish-check/data.json" 2>&1 | ForEach-Object { "$_" }) -join "`n" }
+    finally { Pop-Location; $ErrorActionPreference = $saved }
+    $start = $raw.IndexOf("{")
+    if ($start -lt 0) { return [pscustomobject]@{ ok = $false; error = [pscustomobject]@{ message = $raw } } }
+    try { return $raw.Substring($start) | ConvertFrom-Json } catch { return [pscustomobject]@{ ok = $false; error = [pscustomobject]@{ message = $raw } } }
+}
+
 Write-Host "== 本地物料（出包时实际上传的文件）=="
 $specs = @{
     icon = @{ MinW = 512; MinH = 512; Ratio = 1; RatioText = "1:1" }
@@ -113,13 +127,17 @@ if ($Remote) {
         Report ERROR "taptap_publish" "缺少 developer_id 或 app_id，先在 Maker 管理发布页完成一次发布"
     } else {
         $fields = @{}
+        $hasDraft = $true
         foreach ($module in @("basic-info", "assets-upload")) {
-            $raw = & taptap-cli app get-app-module --dev-id $publish.developer_id --app-id $publish.app_id --data "{`"module_id`":`"$module`"}" 2>&1 | Out-String
-            $result = $raw | ConvertFrom-Json
-            if (-not $result.ok) { Report ERROR $module ("读取失败：" + $result.error.message); continue }
-            if (-not $result.data.result.revision) { Report INFO $module "当前没有未发布草稿，读到的是空值；Maker 出包或 create-draft 后再检查" }
+            $result = Invoke-TapCli @("app", "get-app-module", "--dev-id", $publish.developer_id, "--app-id", $publish.app_id) "{`"module_id`":`"$module`"}"
+            if (-not $result.ok) { Report ERROR $module ("读取失败：" + $result.error.message); $hasDraft = $false; continue }
+            if (-not $result.data.result.revision) { $hasDraft = $false }
             foreach ($p in $result.data.result.fields.PSObject.Properties) { $fields[$p.Name] = $p.Value.current_value }
         }
+    }
+    if ($fields -and -not $hasDraft) {
+        Report INFO "TapTap 草稿" "当前没有未发布草稿（已上线版本无法读取），Maker 出包后再运行 -Remote 核对"
+    } elseif ($fields) {
         # 比较 TapTap 草稿字段和 project.json 的期望值，一致才通过。
         $pairs = @(
             @("title", $fields["title"], $publish.title),
