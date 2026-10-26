@@ -2,6 +2,8 @@
 local UI=require("urhox-libs/UI")
 local Components=require("sumeru.toolkit.uikit.ComponentRegistry")
 local Json={}
+-- 为每个新加载的 Widget 执行项目样式初始化，包含动态条目模板；不设置时保持默认外观。
+function Json.SetWidgetInitializer(fn) Json.widgetInitializer=fn end
 local function walk(widget,fn)
  if not widget then return end
  fn(widget)
@@ -16,6 +18,7 @@ function Json.Load(template,props,components,context)
  if not root then return nil,"JSON root was destroyed: "..template end
  local seen={};local duplicates={}
  walk(root,function(widget)
+  if Json.widgetInitializer then Json.widgetInitializer(widget) end
   local id=widget.props and widget.props.id
   if id then if seen[id] then duplicates[#duplicates+1]=id else seen[id]=true end end
  end)

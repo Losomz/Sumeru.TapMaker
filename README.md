@@ -23,6 +23,12 @@ dev/sumeru/publish/                        发布经验与模板：Maker 与 Tap
 5. 写好 `scripts/main.lua` 后，双击 `启动游戏.cmd`。
 6. 上架前读 `dev/sumeru/publish/README.md`：图片放进 `docs/publish-materials/`，出包前后各跑一次 `publish-check.ps1`。
 
+## UI 布局与 Maker 编辑器
+
+UI JSON 统一放在 `assets/ui/`，Lua Controller 放在 `scripts/`。Maker 编辑器递归扫描整个 `assets/`，不会发现 `scripts/` 中的 `.ui.json`；游戏能加载 JSON，并不代表后台能找到它。
+
+目录示例、旧项目迁移、资源 UUID 保留和自定义控件的编辑器限制见 [Maker UI 目录与迁移说明](scripts/sumeru/toolkit/uikit/MAKER_UI.md)。
+
 ## 维护
 - 框架和工具只在本仓库改，提交推送后到各项目双击 `同步框架.cmd`；不要只改项目里的副本。
 - 同步时 `scripts/sumeru/`、`dev/sumeru/` 整目录镜像（本仓库删掉的文件，项目里也会删）；根目录 `.cmd` 只覆盖不删；项目自己的 `dev/launch.json` 不动。

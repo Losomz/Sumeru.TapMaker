@@ -4,6 +4,8 @@
 
 ## 接入配置
 
+JSON 放在 `assets/ui/`，Lua Controller 放在 `scripts/ui/`，两者采用相同的相对路径即可使用下方默认配置。Maker 后台不扫描 `scripts/`；旧项目迁移、不同路径的适配及编辑器预览限制见 [Maker UI 目录与迁移说明](MAKER_UI.md)。
+
 框架不引用任何业务模块。项目在注册面板前调用一次 `Configure`，把宿主判定、路径约定和项目控件注入进来：
 
 ```lua
@@ -36,6 +38,8 @@ UIKit:Attach(app,metrics)
 - 框架内置控件只有 `FrameworkButton`、`FrameworkToggle`、`FrameworkScrollView`。
 - `Configure` 必须在 `RegisterPanel` 之前调用；配置在 `Destroy` 后保留。
 - App 约定：`app.dirty` 为真时下一帧刷新全部可见页面；`metrics(app)` 返回 `w,h,vw,vh,safe{left,right},top,map,capsule,background`。
+
+项目需要为所有 JSON 控件注入统一外观时，可调用 `require("sumeru.toolkit.uikit.Json").SetWidgetInitializer(fn)`。回调接收 Widget，在每次加载模板时遍历执行，包含动态条目的控件；不设置时保持默认行为。业务布局仍保存在 JSON 中。
 
 ## 文字自适应底板
 
