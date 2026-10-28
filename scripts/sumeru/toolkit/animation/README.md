@@ -25,6 +25,8 @@ local pose=player:Sample() -- frame / source / index / count / feedback
 
 独立播放器使用 `Player:Update(dt)`；FSM 驱动时只使用 `Seek(record.elapsed)`，不可再对主动作调用 `Update`。代码反馈的 `Update(dt)` 返回短停后可用的时间，状态机与移动共用该余量。渲染只读取 `Sample`，不计算序列帧或反馈曲线。
 
+`Sample` 不新建表：每个动画实例和 `Player` 各自复用一张结果表（`Player` 的 `feedback` 子表同样复用），返回值在同一实例下一次 `Sample` 前有效。每帧大量角色采样也不产生 GC 垃圾；需要跨帧保存时复制字段，不要持有返回表，也不要修改其中的 `source`（它是共享的动作定义）。对象池复用播放器时，先 `Player:Reset()`，再用 `HitFeedbackAnimation:Rebind(clock)` 把受击反馈接到新实体的时钟。
+
 游戏绑定在 `game/animation/Bindings.lua`，枚举在 `AnimationId.lua`。枚举值沿用原状态字符串；统一动作数据仍来自 `game.EnemyAnimations`。`EnemyAnimator` 用弱引用缓存实体实例，序列帧时间从 FSM 恢复，代码反馈只保存原有 `flash / hitStop / hitImmune` 字段。类实例与函数不进入版本7存档。
 
 缺失动作绑定基类，采样输出 `visible=false`。静态造型显式绑定一帧循环序列。受击始终绑定代码反馈类，旧受击视频即使保留制作记录也不参与播放。

@@ -7,9 +7,14 @@ function Feedback.new(definition,clock)
 end
 -- 沿用现有剩余时间字段，旧存档恢复不会重新触发受击。
 function Feedback:init(definition,clock)
- Animation.init(self,definition);self.clock=clock or {}
+ Animation.init(self,definition)
  assert(definition.duration>=0 and definition.flashDuration>0 and definition.immunity>=0,"Invalid hit feedback")
- self.clock.hitStop=math.min(definition.duration,self.clock.hitStop or 0)
+ self:Rebind(clock)
+end
+-- 换绑可序列化时钟：对象池复用播放器时接到新实体，沿用该时钟已有的剩余时间。
+function Feedback:Rebind(clock)
+ self.clock=clock or {}
+ self.clock.hitStop=math.min(self.definition.duration,self.clock.hitStop or 0)
  self.clock.hitImmune=self.clock.hitImmune or 0;self.clock.flash=self.clock.flash or 0
 end
 -- 重复命中不延长短停；战斗可单独允许再次刷新闪白。
@@ -42,10 +47,12 @@ function Feedback:IsAvailable() return true end
 function Feedback:Duration() return math.max(self.definition.duration,self.definition.flashDuration) end
 -- 可见反馈消退后结束，硬直免疫仍独立保留。
 function Feedback:IsFinished() return self.clock.flash<=1e-8 and self.clock.hitStop<=1e-8 end
--- 返回纯表现参数，渲染层无需再计算闪白与缩放曲线。
+-- 返回纯表现参数，渲染层无需再计算闪白与缩放曲线。返回本实例复用的表，下次 Sample 前有效。
 function Feedback:Sample()
  local amount=math.max(0,math.min(1,self.clock.flash/self.definition.flashDuration))
- return {flashAmount=amount,flashAlpha=math.min(1,amount*2),scale=1+self.definition.scale*amount,frozen=self.clock.hitStop>1e-8}
+ local s=self.sample_
+ s.flashAmount=amount;s.flashAlpha=math.min(1,amount*2);s.scale=1+self.definition.scale*amount;s.frozen=self.clock.hitStop>1e-8
+ return s
 end
 -- 终止反馈时清除所有剩余时间，死亡不被短停拖延。
 function Feedback:Reset()

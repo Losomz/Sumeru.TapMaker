@@ -4,9 +4,9 @@ local Animation={};Animation.__index=Animation
 function Animation.new(definition)
  local self=setmetatable({},Animation);self:init(definition);return self
 end
--- 初始化实例字段，动画定义只读共享。
+-- 初始化实例字段，动画定义只读共享；sample_ 是本实例复用的采样结果表。
 function Animation:init(definition)
- self.definition=definition or {};self.elapsed=0;self.revision=nil;self.playing=false;self.paused=false
+ self.definition=definition or {};self.elapsed=0;self.revision=nil;self.playing=false;self.paused=false;self.sample_={}
 end
 -- 同一次播放命令幂等；修订号变化或显式重播才重新开始。
 function Animation:Play(options)
@@ -37,6 +37,9 @@ function Animation:IsAvailable() return false end
 function Animation:Duration() return self.definition.duration or 0 end
 -- 查询单次播放是否结束，循环片段不会自行结束。
 function Animation:IsFinished() return not self.definition.loop and self.elapsed+1e-8>=self:Duration() end
--- 空动作保持不可见；渲染层只消费统一姿态结果。
-function Animation:Sample() return {visible=false,index=0,count=0,finished=self:IsFinished()} end
+-- 空动作保持不可见；渲染层只消费统一姿态结果。返回本实例复用的表，下次 Sample 前有效。
+function Animation:Sample()
+ local s=self.sample_;s.visible=false;s.source=nil;s.frame=nil;s.index=0;s.count=0;s.finished=self:IsFinished()
+ return s
+end
 return Animation

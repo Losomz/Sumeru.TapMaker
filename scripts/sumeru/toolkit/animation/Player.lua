@@ -4,8 +4,11 @@ local Player={};Player.__index=Player
 function Player.new()
  local self=setmetatable({},Player);self:init();return self
 end
--- 初始化绑定表及当前动作。
-function Player:init() self.bindings={};self.overlays={};self.current=nil;self.id=nil;self.paused=false end
+-- 初始化绑定表及当前动作；pose_ 与 feedback_ 是本控制器复用的采样结果表。
+function Player:init()
+ self.bindings={};self.overlays={};self.current=nil;self.id=nil;self.paused=false
+ self.feedback_={flashAmount=0,flashAlpha=0,scale=1,frozen=false};self.pose_={visible=false,index=0,count=0,feedback=self.feedback_}
+end
 -- 绑定枚举值与动画实例；覆盖层不会抢占主动作。
 function Player:Bind(id,animation,overlay)
  assert(type(id)=="string" or type(id)=="number","Invalid animation ID")
@@ -47,16 +50,25 @@ function Player:IsFinished() return self.current and self.current:IsFinished() o
 -- 读取当前动作时长。
 function Player:Duration() return self.current and self.current:Duration() or 0 end
 -- 合成姿态和代码表现；当前仅一层受击反馈，后续可继续派生动画类。
+-- 返回本控制器复用的表（feedback 子表同样复用），下次 Sample 前有效；需要跨帧保存时复制字段。
 function Player:Sample()
- local pose=self.current and self.current:Sample() or {visible=false,index=0,count=0}
- pose.feedback={flashAmount=0,flashAlpha=0,scale=1,frozen=false}
+ local pose,feedback=self.pose_,self.feedback_
+ local current=self.current and self.current:Sample()
+ if current then
+  pose.visible=current.visible;pose.source=current.source;pose.frame=current.frame
+  pose.index=current.index;pose.count=current.count;pose.finished=current.finished
+ else
+  pose.visible=false;pose.source=nil;pose.frame=nil;pose.index=0;pose.count=0;pose.finished=nil
+ end
+ feedback.flashAmount=0;feedback.flashAlpha=0;feedback.scale=1;feedback.frozen=false
  for _,animation in ipairs(self.overlays) do
   local effect=animation:Sample()
-  pose.feedback.flashAmount=math.max(pose.feedback.flashAmount,effect.flashAmount or 0)
-  pose.feedback.flashAlpha=math.max(pose.feedback.flashAlpha,effect.flashAlpha or 0)
-  pose.feedback.scale=pose.feedback.scale*(effect.scale or 1)
-  pose.feedback.frozen=pose.feedback.frozen or effect.frozen==true
+  feedback.flashAmount=math.max(feedback.flashAmount,effect.flashAmount or 0)
+  feedback.flashAlpha=math.max(feedback.flashAlpha,effect.flashAlpha or 0)
+  feedback.scale=feedback.scale*(effect.scale or 1)
+  feedback.frozen=feedback.frozen or effect.frozen==true
  end
+ pose.feedback=feedback
  return pose
 end
 -- 暂停冻结主动作和覆盖层；恢复时不重播。

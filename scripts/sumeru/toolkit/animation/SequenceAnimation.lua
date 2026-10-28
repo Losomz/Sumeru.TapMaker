@@ -16,10 +16,12 @@ end
 function Sequence:IsAvailable() return true end
 -- 播放时长由序列长度和帧率决定。
 function Sequence:Duration() return #self.definition.frames/self.definition.fps end
--- 循环取模；单次播放停在最后一帧，不额外复制尾帧。
+-- 循环取模；单次播放停在最后一帧，不额外复制尾帧。返回本实例复用的表，下次 Sample 前有效。
 function Sequence:Sample()
  local d=self.definition;local count=#d.frames;local index=math.floor(self.elapsed*d.fps+1e-8)
  index=d.loop and index%count or math.min(count-1,index)
- return {visible=true,source=d,frame=d.frames[index+1],index=index+1,count=count,finished=self:IsFinished()}
+ local s=self.sample_
+ s.visible=true;s.source=d;s.frame=d.frames[index+1];s.index=index+1;s.count=count;s.finished=self:IsFinished()
+ return s
 end
 return Sequence
