@@ -15,6 +15,7 @@ local function groupPool(self,group,capacity)
   local slot={index=#self.slots+1,group=group,pose={},active=false}
   self.slots[slot.index]=slot;self.renderer:Create(slot);return slot
  end}
+ ---@type SumeruPoolKit?
  local pools=self.config.pools
  if not pools then return ObjectPool.new(options) end
  local name=(self.config.poolName or "floating-text")..":"..tostring(group.id)
@@ -186,8 +187,11 @@ end
 function Kit:Destroy()
  if self.destroyed then return end
  self:Clear();self.renderer:Destroy();self.renderer=nil;self.destroyed=true
+ ---@type SumeruPoolKit?
  local pools=self.config.pools
- for name,pool in pairs(self.registered) do if pools:Get(name)==pool then pools:Release(name) end end
+ if pools then
+  for name,pool in pairs(self.registered) do if pools:Get(name)==pool then pools:Release(name) end end
+ end
  self.slots={};self.groups={};self.merge={};self.presets={};self.registered={};self.config=nil
 end
 return Kit
