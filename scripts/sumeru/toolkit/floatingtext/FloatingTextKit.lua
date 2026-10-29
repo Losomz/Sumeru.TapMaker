@@ -1,4 +1,5 @@
--- 固定容量飘字调度器：数据与控件复用，渲染器可替换，不依赖游戏实体。
+-- 固定容量飘字调度器：数据与控件复用，渲染器可替换，不依赖游戏实体；各分组槽位由 PoolKit 的 ObjectPool 管理。
+local ObjectPool=require("sumeru.toolkit.poolkit.ObjectPool")
 ---@class SumeruFloatingTextKit
 ---@field active SumeruFloatingTextSlot[]
 ---@field stats {emitted:integer,merged:integer,dropped:integer,evicted:integer,peak:integer}
@@ -7,21 +8,30 @@ local Kit={};Kit.__index=Kit
 local function finite(value)
  return type(value)=="number" and value==value and math.abs(value)<math.huge
 end
--- 初始化分组配额、空闲栈和稠密活动表，运行中不创建槽位或动画对象。
+-- 建立一个分组的槽位池：初始化时按容量一次建好槽位与控件，limit 等于容量，运行中不再新建。
+-- 传入 config.pools（PoolKit）时以 "poolName:分组id" 登记，先释放同名旧池（槽位绑定本实例的控件层，不能沿用旧控件）；否则建本地池。
+local function groupPool(self,group,capacity)
+ local options={prewarm=capacity,limit=capacity,create=function()
+  local slot={index=#self.slots+1,group=group,pose={},active=false}
+  self.slots[slot.index]=slot;self.renderer:Create(slot);return slot
+ end}
+ local pools=self.config.pools
+ if not pools then return ObjectPool.new(options) end
+ local name=(self.config.poolName or "floating-text")..":"..tostring(group.id)
+ pools:Release(name)
+ local pool=pools:Object(name,options);self.registered[name]=pool;return pool
+end
+-- 初始化分组配额、槽位池和稠密活动表，运行中不创建槽位或动画对象。
 ---@return SumeruFloatingTextKit
 function Kit.new(config)
  config=config or {}
- local self=setmetatable({config=config,presets=config.presets or {},slots={},active={},groups={},merge={},
+ local self=setmetatable({config=config,presets=config.presets or {},slots={},active={},groups={},merge={},registered={},
   serial=0,randomState=13579,paused=false,destroyed=false,stats={emitted=0,merged=0,dropped=0,evicted=0,peak=0}},Kit)
  self.renderer=config.renderer or require("sumeru.toolkit.floatingtext.UIRenderer").new(config)
  for _,def in ipairs(config.groups or {{id="default",capacity=config.capacity or 48}}) do
   assert(not self.groups[def.id],"Duplicate floating text group")
-  local group={free={},id=def.id};self.groups[def.id]=group
-  for _=1,math.max(0,math.floor(def.capacity)) do
-   local slot={index=#self.slots+1,pool=group,pose={},active=false}
-   self.slots[slot.index]=slot;group.free[#group.free+1]=slot
-   self.renderer:Create(slot)
-  end
+  local group={id=def.id};self.groups[def.id]=group
+  group.pool=groupPool(self,group,math.max(0,math.floor(def.capacity)))
  end
  for name in pairs(self.presets) do self.merge[name]={} end
  return self
@@ -31,7 +41,7 @@ function Kit:NextRandom()
  self.randomState=(self.randomState*48271)%2147483647
  return self.randomState/2147483647*2-1
 end
--- O(1) 交换移除活动槽，回收时断开合并索引和业务引用。
+-- O(1) 交换移除活动槽，回收时断开合并索引和业务引用，再放回所属分组的槽位池。
 function Kit:Release(slot)
  if not slot.active then return end
  local index=slot.activeIndex;local last=self.active[#self.active]
@@ -39,20 +49,20 @@ function Kit:Release(slot)
  if slot.mergeKey~=nil and self.merge[slot.preset][slot.mergeKey]==slot then self.merge[slot.preset][slot.mergeKey]=nil end
  self.renderer:Hide(slot)
  slot.active=false;slot.profile=nil;slot.groupKey=nil;slot.mergeKey=nil;slot.icon=nil;slot.followKey=nil
- slot.pool.free[#slot.pool.free+1]=slot
+ slot.group.pool:Recycle(slot)
 end
--- 配额用满时只替换不高于新事件优先级的最旧显示，扫描范围始终有界。
+-- 从分组槽位池取槽；配额用满时只替换不高于新事件优先级的最旧显示后再取，扫描范围始终有界。
 function Kit:Acquire(group,priority)
- if #group.free==0 then
-  local oldest
-  for _,slot in ipairs(self.active) do
-   if slot.pool==group and slot.priority<=priority and (not oldest or slot.priority<oldest.priority
-    or slot.priority==oldest.priority and slot.serial<oldest.serial) then oldest=slot end
-  end
-  if not oldest then return nil end
-  self.stats.evicted=self.stats.evicted+1;self:Release(oldest)
+ local slot=group.pool:Allocate()
+ if slot then return slot end
+ local oldest
+ for _,active in ipairs(self.active) do
+  if active.group==group and active.priority<=priority and (not oldest or active.priority<oldest.priority
+   or active.priority==oldest.priority and active.serial<oldest.serial) then oldest=active end
  end
- local slot=group.free[#group.free];group.free[#group.free]=nil;return slot
+ if not oldest then return nil end
+ self.stats.evicted=self.stats.evicted+1;self:Release(oldest)
+ return group.pool:Allocate()
 end
 -- 接收纯显示数据；同类短窗合并，每条新数字只随机一次小幅出生偏移。
 function Kit:Emit(event)
@@ -87,7 +97,7 @@ function Kit:Emit(event)
  end
  if count>=(self.config.maxPerTarget or 3) then
   if not oldest then self.stats.dropped=self.stats.dropped+1;return false end
-  if oldest.pool==group then self.stats.evicted=self.stats.evicted+1;self:Release(oldest) end
+  if oldest.group==group then self.stats.evicted=self.stats.evicted+1;self:Release(oldest) end
  end
  local slot=self:Acquire(group,priority)
  if not slot then self.stats.dropped=self.stats.dropped+1;return false end
@@ -172,11 +182,13 @@ function Kit:GetStats()
  return {capacity=#self.slots,active=#self.active,pending=pending,visible=#self.active-pending,
   peak=self.stats.peak,emitted=self.stats.emitted,merged=self.stats.merged,dropped=self.stats.dropped,evicted=self.stats.evicted}
 end
--- 幂等销毁本实例，调用者负责在所属显示层销毁前调用。
+-- 幂等销毁本实例，调用者负责在所属显示层销毁前调用；注销本实例登记且仍归本实例的 PoolKit 槽位池。
 function Kit:Destroy()
  if self.destroyed then return end
  self:Clear();self.renderer:Destroy();self.renderer=nil;self.destroyed=true
- self.slots={};self.groups={};self.merge={};self.presets={};self.config=nil
+ local pools=self.config.pools
+ for name,pool in pairs(self.registered) do if pools:Get(name)==pool then pools:Release(name) end end
+ self.slots={};self.groups={};self.merge={};self.presets={};self.registered={};self.config=nil
 end
 return Kit
 
@@ -186,7 +198,7 @@ return Kit
 ---@field activeIndex integer
 ---@field priority number
 ---@field serial integer
----@field pool table
+---@field group {id:any,pool:SumeruObjectPool}
 ---@field pose table
 ---@field profile table?
 ---@field preset string
